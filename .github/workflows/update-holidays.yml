@@ -1,1 +1,49 @@
-
+name: update-holidays
+on:
+  schedule:
+    - cron: "0 2 1 * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update holidays.json
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request, datetime
+          now = datetime.date.today()
+          try:
+              years = json.load(open("holidays.json", encoding="utf-8")).get("years", {})
+          except Exception:
+              years = {}
+          for y in (now.year, now.year + 1):
+              try:
+                  url = "https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/%d.json" % y
+                  a = json.load(urllib.request.urlopen(url, timeout=30))
+                  assert isinstance(a, list) and len(a) >= 300
+                  H, W = {}, {}
+                  for e in a:
+                      q = str(e["date"])
+                      k = q[:4] + "-" + q[4:6] + "-" + q[6:]
+                      w = datetime.date(int(q[:4]), int(q[4:6]), int(q[6:])).isoweekday() % 7
+                      if e.get("isHoliday") and 0 < w < 6:
+                          H[k] = e.get("description") or "國定假日"
+                      if (not e.get("isHoliday")) and w in (0, 6):
+                          W[k] = e.get("description") or "補行上班日"
+                  years[str(y)] = {"H": H, "W": W}
+                  print("updated", y)
+              except Exception as ex:
+                  print("skip", y, ex)
+          with open("holidays.json", "w", encoding="utf-8") as f:
+              json.dump({"checked": now.isoformat(), "years": years}, f, ensure_ascii=False, sort_keys=True)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add holidays.json
+          git commit -m "update holidays" || exit 0
+          git push
