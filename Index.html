@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>小碧潭下一班</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="小碧潭">
+<style>
+:root{--bg:#f4f6f0;--card:#fff;--ink:#1c2418;--mute:#6b7566;--acc:#2f7d32;--acc2:#d4d94f;--line:#e2e6da;--chip:#e8ecdf;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12150f;--card:#1c2018;--ink:#eef2e8;--mute:#98a291;--acc:#7fd183;--acc2:#d4d94f;--line:#2b3125;--chip:#262c20}}
+:root[data-theme="dark"]{--bg:#12150f;--card:#1c2018;--ink:#eef2e8;--mute:#98a291;--acc:#7fd183;--acc2:#d4d94f;--line:#2b3125;--chip:#262c20}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
+main{max-width:480px;margin:0 auto;padding:14px 16px 28px}
+.top{display:flex;justify-content:space-between;align-items:baseline}
+.clock{font-size:15px;color:var(--mute);font-variant-numeric:tabular-nums}
+.type{font-size:13px;background:var(--chip);padding:3px 10px;border-radius:99px;color:var(--mute)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--chip);padding:5px;border-radius:14px;margin:12px 0}
+.seg button{border:0;background:transparent;color:var(--mute);font:600 16px inherit;font-family:inherit;padding:12px 4px;border-radius:10px}
+.seg button.on{background:var(--acc);color:#fff}
+:root[data-theme="dark"] .seg button.on,:root:not([data-theme="light"]) .seg button.on{color:#10210f}
+.hero{background:var(--card);border-radius:20px;padding:22px 18px;text-align:center;border:1px solid var(--line);border-top:6px solid var(--acc2)}
+.lbl{font-size:14px;color:var(--mute)}
+.big{font-size:56px;font-weight:700;line-height:1.1;margin:6px 0;font-variant-numeric:tabular-nums;color:var(--acc)}
+.big small{font-size:22px;font-weight:600;margin:0 4px 0 2px}
+.at{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:12px;background:#c62828;color:#fff;padding:2px 8px;border-radius:6px;margin-left:8px;vertical-align:middle}
+h2{font-size:14px;color:var(--mute);margin:20px 4px 8px;font-weight:600}
+ul{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+li{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+li:first-child{border-top:0}
+li b{font-size:20px}
+li span{color:var(--mute);font-size:15px}
+.ov{display:flex;gap:6px;flex-wrap:wrap}
+.ov button{border:1px solid var(--line);background:var(--card);color:var(--mute);font:500 14px inherit;font-family:inherit;padding:8px 12px;border-radius:99px}
+.ov button.on{background:var(--chip);color:var(--ink);border-color:var(--acc)}
+.foot{font-size:12px;color:var(--mute);margin:18px 4px 0;line-height:1.6}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><div class="clock" id="clock">--:--:--</div><div class="type" id="type"></div></div>
+  <div class="seg" id="seg">
+    <button data-d="xb">往小碧潭</button>
+    <button data-d="qz">往七張</button>
+  </div>
+  <div class="hero">
+    <div class="lbl" id="from"></div>
+    <div class="big" id="count">--</div>
+    <div class="at" id="at"></div>
+  </div>
+  <h2>接下來</h2>
+  <ul id="list"></ul>
+  <h2>時刻表類型</h2>
+  <div class="ov" id="ov">
+    <button data-o="">自動</button>
+    <button data-o="wd">平日</button>
+    <button data-o="sat">週六</button>
+    <button data-o="sun">週日、國定假日</button>
+  </div>
+  <p class="foot">時間為列車離站時間，實際可能稍有差異，請提早至月台候車。遇天災、停班停課、連假等調整班距時不適用。國定假日請手動選「週日、國定假日」。時刻表自 2021/7/27 生效。</p>
+</main>
+<script>
+// 資料格式：「時|分 分 分」；0 時代表跨午夜（隔日 00:xx）
+var S="6|03 19 35 52,7|10 28 46,8|04 22 40 58,9|16 34 52,10|10 28 46,11|04 22 40 58,12|16 34 52,13|10 28 46,14|04 22 40 58,15|16 34 52,16|10 28 46,17|04 22 40 58,18|16 34 52,19|10 28 46,20|04 22 40 58,21|16 34 53,22|12 32 51,23|09 26 42 57";
+var Q="6|11 28 44,7|01 19 38 56,8|14 33 51,9|09 27 45,10|03 21 39 57,11|15 33 51,12|09 27 45,13|03 21 39 57,14|15 33 51,15|09 27 45,16|03 21 39 57,17|15 33 51,18|09 27 45,19|03 21 39 57,20|15 33 51,21|09 27 45,22|03 23 43,23|03 18 35 51,0|09";
+var DATA={
+ // 七張 → 小碧潭
+ xb:{from:"七張站發車",
+  wd:"6|11 27 43 56,7|09 21 33 45 57,8|09 21 33 45 57,9|09 28 47,10|06 26 44,11|02 20 38 56,12|14 32 50,13|08 26 44,14|02 20 38 56,15|14 32 50,16|08 26 43 58,17|10 22 35 47,18|00 13 25 38 51,19|03 17 35 52,20|11 28 45,21|03 21 39 57,22|15 32 47,23|03 18 35 51,0|09",
+  we:Q},
+ // 小碧潭 → 七張
+ qz:{from:"小碧潭站發車",
+  wd:"6|03 19 35 49,7|02 14 26 38 50,8|02 14 26 38 50,9|02 21 40 57,10|15 34 52,11|10 28 46,12|04 22 40 58,13|16 34 52,14|10 28 46,15|04 22 40 58,16|16 34 50,17|03 15 28 41 53,18|06 19 31 44 57,19|10 25 43,20|01 18 36 54,21|12 30 48,22|06 24 39 54,23|09 26 42 57",
+  we:S}
+};
+var NAMES={wd:"平日",sat:"週六",sun:"週日、國定假日"};
+function parse(s){var o=[];s.split(",").forEach(function(p){var a=p.split("|"),h=+a[0];a[1].split(" ").forEach(function(m){o.push((h===0?24:h)*60+ +m)})});return o}
+var P={};for(var k in DATA){P[k]={wd:parse(DATA[k].wd),we:parse(DATA[k].we)}}
+
+var dir="xb",ov="";
+try{var sd=localStorage.getItem("xb_dir");if(sd==="xb"||sd==="qz")dir=sd}catch(e){}
+
+function tpe(){
+  var f=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Taipei",hour12:false,year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric",second:"numeric"});
+  var o={};f.formatToParts(new Date()).forEach(function(p){o[p.type]=+p.value});
+  if(o.hour===24)o.hour=0;
+  o.dow=new Date(Date.UTC(o.year,o.month-1,o.day)).getUTCDay();
+  return o;
+}
+function autoType(dow){return dow===0?"sun":dow===6?"sat":"wd"}
+function pad(n){return n<10?"0"+n:""+n}
+function fmt(min){min=((min%1440)+1440)%1440;return pad(Math.floor(min/60))+":"+pad(min%60)}
+
+function render(){
+  var t=tpe(),nowSec=t.hour*3600+t.minute*60+t.second;
+  document.getElementById("clock").textContent=pad(t.hour)+":"+pad(t.minute)+":"+pad(t.second);
+  var todayType=ov||autoType(t.dow);
+  document.getElementById("type").textContent=NAMES[todayType];
+  document.getElementById("from").textContent=DATA[dir].from;
+
+  var ev=[];
+  for(var off=-1;off<=1;off++){
+    var ty=off===0?todayType:autoType((t.dow+off+7)%7);
+    var list=P[dir][ty==="wd"?"wd":"we"];
+    list.forEach(function(m,i){ev.push({m:off*1440+m,last:i===list.length-1})});
+  }
+  ev.sort(function(a,b){return a.m-b.m});
+  var nx=ev.filter(function(e){return e.m*60>nowSec}).slice(0,6);
+
+  var big=document.getElementById("count"),at=document.getElementById("at");
+  if(!nx.length){big.textContent="--";at.textContent="查無班次";return}
+  var d=nx[0].m*60-nowSec,mm=Math.floor(d/60),ss=d%60;
+  big.innerHTML=mm+"<small>分</small>"+pad(ss)+"<small>秒</small>";
+  at.innerHTML=fmt(nx[0].m)+" 開"+(nx[0].last?'<span class="tag">末班</span>':"");
+
+  var h="";
+  nx.slice(1).forEach(function(e){
+    var r=Math.ceil((e.m*60-nowSec)/60);
+    h+="<li><b>"+fmt(e.m)+(e.last?'<span class="tag">末班</span>':"")+"</b><span>"+r+" 分鐘後</span></li>";
+  });
+  document.getElementById("list").innerHTML=h;
+}
+function sync(){
+  document.querySelectorAll("#seg button").forEach(function(b){b.classList.toggle("on",b.dataset.d===dir)});
+  document.querySelectorAll("#ov button").forEach(function(b){b.classList.toggle("on",b.dataset.o===ov)});
+}
+document.getElementById("seg").addEventListener("click",function(e){
+  var d=e.target.dataset&&e.target.dataset.d;if(!d)return;dir=d;
+  try{localStorage.setItem("xb_dir",dir)}catch(x){}
+  sync();render();
+});
+document.getElementById("ov").addEventListener("click",function(e){
+  if(!e.target.dataset||e.target.dataset.o===undefined)return;ov=e.target.dataset.o;sync();render();
+});
+sync();render();setInterval(render,1000);
+document.addEventListener("visibilitychange",render);
+</script>
+</body>
+</html>
