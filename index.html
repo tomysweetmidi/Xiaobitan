@@ -80,8 +80,7 @@ var NAMES={wd:"平日",sat:"週六",sun:"週日、國定假日"};
 function parse(s){var o=[];s.split(",").forEach(function(p){var a=p.split("|"),h=+a[0];a[1].split(" ").forEach(function(m){o.push((h===0?24:h)*60+ +m)})});return o}
 var P={};for(var k in DATA){P[k]={wd:parse(DATA[k].wd),we:parse(DATA[k].we)}}
 
-var dir="xb",ov="";
-try{var sd=localStorage.getItem("xb_dir");if(sd==="xb"||sd==="qz")dir=sd}catch(e){}
+var dir="qz",ov="";
 
 function tpe(){
   var f=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Taipei",hour12:false,year:"numeric",month:"numeric",day:"numeric",hour:"numeric",minute:"numeric",second:"numeric"});
@@ -129,7 +128,6 @@ function sync(){
 }
 document.getElementById("seg").addEventListener("click",function(e){
   var d=e.target.dataset&&e.target.dataset.d;if(!d)return;dir=d;
-  try{localStorage.setItem("xb_dir",dir)}catch(x){}
   sync();render();
 });
 document.getElementById("ov").addEventListener("click",function(e){
