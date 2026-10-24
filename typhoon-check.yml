@@ -1,0 +1,192 @@
+name: typhoon-check
+# 檢查人事總處「天然災害停止上班及上課情形」，把雙北結果存成 typhoon.json
+on:
+  schedule:
+    - cron: "7,37 10-15 * * *"   # 台灣時間 18:07–23:37（前一晚公告）
+    - cron: "7,37 20-22 * * *"   # 台灣時間 04:07–06:37（清晨補宣布）
+    - cron: "7,37 1-3 * * *"     # 台灣時間 09:07–11:37（下午停班公告）
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: repo-write
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check announcement
+        run: |
+          cat > /tmp/typhoon_check.py <<'PY'
+          import json, re, html, datetime, urllib.request, time, sys
+
+          URL = "https://www.dgpa.gov.tw/typh/daily/nds.html"
+          CITIES = ["臺北市", "新北市"]
+          TZ = datetime.timezone(datetime.timedelta(hours=8))
+          MY_AREA = "新店"  # 小碧潭、七張都在新店區
+
+
+          def fetch():
+              last = None
+              for i in range(3):
+                  try:
+                      req = urllib.request.Request(URL, headers={"User-Agent": "Mozilla/5.0 (Xiaobitan timetable; daily check)"})
+                      raw = urllib.request.urlopen(req, timeout=30).read()
+                      for enc in ("utf-8", "big5"):
+                          try:
+                              return raw.decode(enc)
+                          except UnicodeDecodeError:
+                              pass
+                      return raw.decode("utf-8", "replace")
+                  except Exception as e:
+                      last = e
+                      time.sleep(5)
+              raise last
+
+
+          def clean(s):
+              s = re.sub(r"(?is)<(script|style).*?</\1>", " ", s)
+              s = re.sub(r"(?i)<br\s*/?>", " ", s)
+              s = re.sub(r"<[^>]+>", " ", s)
+              s = html.unescape(s).replace("　", " ")
+              return re.sub(r"\s+", " ", s).strip()
+
+
+          def page_date(text, now):
+              m = re.search(r"(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*天然災害停止上班", text)
+              if not m:
+                  return now.date()
+              y = int(m.group(1))
+              if y < 1000:
+                  y += 1911
+              return datetime.date(y, int(m.group(2)), int(m.group(3)))
+
+
+          def city_text(doc, city):
+              # 1) 依表格列找：某一格剛好是縣市名，取後面的格子
+              for row in re.split(r"(?i)<tr[\s>]", doc)[1:]:
+                  row = re.split(r"(?i)</tr>", row)[0]
+                  parts = re.split(r"(?i)<t[dh](?=[\s>])", row)[1:]
+                  cells = [clean(p.split(">", 1)[1] if ">" in p else p) for p in parts]
+                  for i, c in enumerate(cells):
+                      if c.replace(" ", "") == city:
+                          rest = " ".join(x for x in cells[i + 1:] if x)
+                          if rest:
+                              return rest
+              # 2) 退而求其次：純文字中，縣市名之後到下一個縣市名之前
+              text = clean(doc)
+              m = re.search(city + r"\s*[:：·]?\s*(.+?)(?=\s(?:基隆市|臺北市|新北市|桃園市|新竹市|新竹縣|苗栗縣|臺中市|彰化縣|南投縣|雲林縣|嘉義市|嘉義縣|臺南市|高雄市|屏東縣|宜蘭縣|花蓮縣|臺東縣|澎湖縣|金門縣|連江縣)\b|\s*(?:備註|註：|1\.)|$)", text)
+              if m and ("上班" in m.group(1) or "上課" in m.group(1)):
+                  return m.group(1).strip()
+              return ""
+
+
+          def sentence_date(s, base):
+              if s.startswith("今天") or s.startswith("今日"):
+                  return base, s[2:]
+              if s.startswith("明天") or s.startswith("明日"):
+                  return base + datetime.timedelta(days=1), s[2:]
+              m = re.match(r"(?:(\d{1,2})月)?(\d{1,2})日", s)
+              if m:
+                  mo = int(m.group(1) or base.month)
+                  d = int(m.group(2))
+                  y = base.year + (1 if mo < base.month - 6 else 0)
+                  try:
+                      return datetime.date(y, mo, d), s[m.end():]
+                  except ValueError:
+                      pass
+              return None, s
+
+
+          def classify(s):
+              work_off = ("停止上班" in s) and not re.search(r"未達停止上班|照常上班|正常上班", s)
+              school_off = ("停止上課" in s or "上課標準" in s) and not re.search(r"未達停止上班及上課|照常上課|正常上課", s)
+              if "已達停止上班" in s:
+                  work_off = True
+              if not work_off:
+                  if school_off:
+                      return "school"
+                  if re.search(r"照常上班|正常上班|未達停止上班", s):
+                      return "on"
+                  return None
+              head = re.split(r"停止上班", s)[0]
+              if re.search(r"[區鄉鎮里]", head):  # 只有部分行政區
+                  return "off" if MY_AREA in head else "area"
+              if re.search(r"上午|下午|中午|晚上|夜間|\d+\s*時", head):
+                  return "partial"
+              return "off"
+
+
+          RANK = {"off": 4, "partial": 3, "area": 2, "school": 1, "on": 0}
+
+
+          def parse(doc, now):
+              text = clean(doc)
+              base = page_date(text, now)
+              upd = re.search(r"更新時間\s*[:：]\s*([\d/\-]+\s+[\d:]+)", text)
+              days, raw = {}, {}
+              for city in CITIES:
+                  t = city_text(doc, city)
+                  raw[city] = t
+                  cur = base
+                  for s in [x.strip() for x in re.split(r"[。；;]", t) if x.strip()]:
+                      d, body = sentence_date(s, base)
+                      if d is None:
+                          d = cur
+                      cur = d
+                      lv = classify(body)
+                      if lv is None:
+                          continue
+                      k = d.isoformat()
+                      e = days.setdefault(k, {}).get(city)
+                      if not e or RANK[lv] > RANK[e["level"]]:
+                          days[k][city] = {"level": lv, "text": s}
+              return {"pageDate": base.isoformat(), "updated": upd.group(1) if upd else "", "days": days, "raw": raw}
+
+
+          def main(path="typhoon.json", doc=None, now=None):
+              now = now or datetime.datetime.now(TZ)
+              if doc is None:
+                  try:
+                      doc = fetch()
+                  except Exception as e:
+                      print("fetch failed:", e)
+                      return False
+              new = parse(doc, now)
+              try:
+                  old = json.load(open(path, encoding="utf-8"))
+              except Exception:
+                  old = {}
+              # 保留前幾天的紀錄，讓午夜過後仍看得到「今天」
+              keep = (now.date() - datetime.timedelta(days=2)).isoformat()
+              days = {k: v for k, v in (old.get("days") or {}).items() if k >= keep}
+              for k, v in new["days"].items():
+                  days[k] = v
+              out = {"checked": now.strftime("%Y-%m-%d %H:%M"), "source": URL,
+                     "pageDate": new["pageDate"], "updated": new["updated"],
+                     "days": dict(sorted(days.items())), "raw": new["raw"]}
+              same = {k: v for k, v in out.items() if k != "checked"} == {k: v for k, v in old.items() if k != "checked"}
+              if same and str(old.get("checked", ""))[:10] == out["checked"][:10]:
+                  print("no change")
+                  return False
+              with open(path, "w", encoding="utf-8") as f:
+                  json.dump(out, f, ensure_ascii=False, indent=1)
+              print(json.dumps(out, ensure_ascii=False, indent=1))
+              return True
+
+
+          if __name__ == "__main__":
+              main()
+          PY
+          python3 /tmp/typhoon_check.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add typhoon.json 2>/dev/null || exit 0
+          git diff --cached --quiet && exit 0
+          git commit -m "typhoon check"
+          for i in 1 2 3; do git pull --rebase -q && git push && exit 0; sleep 5; done
+          exit 1
