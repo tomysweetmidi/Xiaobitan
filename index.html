@@ -22,6 +22,8 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
 main{max-width:480px;margin:0 auto;padding:10px 16px 28px}
+.vc{display:flex;justify-content:flex-end;align-items:center;gap:6px;font-size:13px;color:var(--mute);margin:0 4px 6px;font-variant-numeric:tabular-nums}
+.vc b{color:var(--ink);font-size:15px}
 .ban{position:relative;height:60px;border-radius:16px;overflow:hidden;background:linear-gradient(var(--b1),var(--b2))}
 .ban svg{position:absolute;inset:0;width:100%;height:100%}
 .ttl{position:absolute;left:14px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;color:#fff}
@@ -83,6 +85,7 @@ li span{color:var(--mute);font-size:15px}
 </head>
 <body>
 <main>
+<div class="vc" id="vc">今天瀏覽 <b id="vpv">--</b> 次・<b id="vuv">--</b> 人</div>
 <div class="ban">
 <svg viewBox="0 0 480 60" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
 <defs><pattern id="w" width="7" height="9" patternUnits="userSpaceOnUse"><rect x="2" y="2" width="3" height="4" fill="#fff" opacity=".55"/></pattern></defs>
@@ -318,6 +321,25 @@ document.getElementById("ov").addEventListener("click",function(e){
 });
 document.getElementById("fullbtn").addEventListener("click",function(){showFull=!showFull;render()});
 sync();render();setInterval(render,1000);
+// ===== 今日瀏覽計數（abacus 免費計數服務；人數以「每台裝置每天算一次」計）=====
+(function(){
+  var NS="tomysweetmidi-xiaobitan",API="https://abacus.jasoncameron.dev/";
+  var t=tpe(),day=t.year+pad(t.month)+pad(t.day);
+  function call(act,key,id){
+    return fetch(API+act+"/"+NS+"/"+key,{cache:"no-store"}).then(function(r){
+      if(r.status===404&&act==="get")return {value:0};
+      return r.ok?r.json():Promise.reject();
+    }).then(function(j){if(j&&typeof j.value==="number")document.getElementById(id).textContent=j.value;})
+    .catch(function(){});
+  }
+  call("hit","pv-"+day,"vpv");
+  var seen="";try{seen=localStorage.getItem("xb_seen")||""}catch(e){}
+  if(seen!==day){
+    try{localStorage.setItem("xb_seen",day)}catch(e){}
+    call("hit","uv-"+day,"vuv");
+  }else call("get","uv-"+day,"vuv");
+})();
+
 document.addEventListener("visibilitychange",render);
 </script>
 </body>
